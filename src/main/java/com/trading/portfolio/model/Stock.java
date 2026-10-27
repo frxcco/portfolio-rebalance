@@ -26,9 +26,9 @@ public class Stock {
     private final String name;
 
     /**
-     * Latest market price of the stock.
+     * Latest market price of the stock. Marked as volatile to ensure atomic memory visibility across concurrent threads.
      */
-    private BigDecimal currentPrice;
+    private volatile BigDecimal currentPrice;
 
     /**
      * Constructs a Stock instance without an initial price.
@@ -125,8 +125,8 @@ public class Stock {
     }
 
     /**
-     * Two Stock objects are considered equal if they have the same ticker symbol,
-     * normalized to uppercase using {@link Locale#ROOT}.
+     * Two Stock objects are considered equal if they have the same ticker symbol.
+     * The symbol is already canonicalized to uppercase upon construction.
      */
     @Override
     public boolean equals(Object o) {
@@ -137,15 +137,15 @@ public class Stock {
             return false;
         }
         Stock other = (Stock) o;
-        return this.symbol.toUpperCase(Locale.ROOT).equals(other.symbol.toUpperCase(Locale.ROOT));
+        return this.symbol.equals(other.symbol);
     }
 
     /**
-     * Hash code based on the normalized ticker symbol.
+     * Hash code based on the canonicalized ticker symbol.
      */
     @Override
     public int hashCode() {
-        return Objects.hash(symbol.toUpperCase(Locale.ROOT));
+        return symbol.hashCode();
     }
 
     @Override

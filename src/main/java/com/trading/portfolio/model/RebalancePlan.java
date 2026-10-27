@@ -2,6 +2,7 @@ package com.trading.portfolio.model;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -13,33 +14,66 @@ import java.util.Objects;
  * along with baseline context such as the portfolio's total valuation prior to rebalancing.
  * </p>
  * <p>
- * Provides business query methods to retrieve separate SELL or BUY order pipelines,
- * calculate cumulative monetary amounts, check if rebalancing actions are required,
- * and assess overall order statistics.
+ * Precomputes segregated SELL and BUY order pipelines and cumulative monetary amounts
+ * in a single pass during construction, providing O(1) query performance and
+ * clean JSON serialization properties.
  * </p>
  *
- * @param orders immutable list of individual rebalancing orders, must not be null
+ * @param orders immutable list of all individual rebalancing orders, must not be null
+ * @param sellOrders immutable list of pre-filtered SELL orders, must not be null
+ * @param buyOrders immutable list of pre-filtered BUY orders, must not be null
+ * @param totalSellAmount precomputed total proceeds from SELL orders, must not be null
+ * @param totalBuyAmount precomputed total capital required for BUY orders, must not be null
  * @param totalPortfolioValueBefore total value of the portfolio prior to execution, must not be null and non-negative
  */
 public record RebalancePlan(
         List<RebalanceOrder> orders,
+        List<RebalanceOrder> sellOrders,
+        List<RebalanceOrder> buyOrders,
+        BigDecimal totalSellAmount,
+        BigDecimal totalBuyAmount,
         BigDecimal totalPortfolioValueBefore
 ) {
 
     /**
-     * Compact constructor creating an immutable copy of the orders list and validating inputs.
+     * Compact constructor validating constraints and enforcing immutable defensive copies.
      *
-     * @throws NullPointerException if {@code orders} or {@code totalPortfolioValueBefore} is null
+     * @throws NullPointerException if any parameter is null
      * @throws IllegalArgumentException if {@code totalPortfolioValueBefore} is negative (&lt; 0)
      */
     public RebalancePlan {
         Objects.requireNonNull(orders, "Orders list cannot be null");
+        Objects.requireNonNull(sellOrders, "Sell orders list cannot be null");
+        Objects.requireNonNull(buyOrders, "Buy orders list cannot be null");
+        Objects.requireNonNull(totalSellAmount, "Total sell amount cannot be null");
+        Objects.requireNonNull(totalBuyAmount, "Total buy amount cannot be null");
         Objects.requireNonNull(totalPortfolioValueBefore, "Total portfolio value before cannot be null");
+
         if (totalPortfolioValueBefore.compareTo(BigDecimal.ZERO) < 0) {
             throw new IllegalArgumentException(
                     "Total portfolio value before cannot be negative, got: " + totalPortfolioValueBefore);
         }
         orders = List.copyOf(orders);
+        sellOrders = List.copyOf(sellOrders);
+        buyOrders = List.copyOf(buyOrders);
+    }
+
+    /**
+     * Standard constructor taking the full orders list and precomputing segregated collections
+     * and monetary totals during instantiation.
+     *
+     * @param orders list of rebalance orders, must not be null
+     * @param totalPortfolioValueBefore total portfolio value before execution, must not be null and non-negative
+     */
+    public RebalancePlan(List<RebalanceOrder> orders, BigDecimal totalPortfolioValueBefore) {
+        this(
+                Objects.requireNonNull(orders, "Orders list cannot be null"),
+                filterOrdersByAction(orders, OrderAction.SELL),
+                filterOrdersByAction(orders, OrderAction.BUY),
+                sumOrderAmounts(orders, OrderAction.SELL),
+                sumOrderAmounts(orders, OrderAction.BUY),
+                totalPortfolioValueBefore
+        );
     }
 
     /**
@@ -59,29 +93,71 @@ public record RebalancePlan(
      * @return a {@link RebalancePlan} with no orders
      */
     public static RebalancePlan empty(BigDecimal totalPortfolioValueBefore) {
-        return new RebalancePlan(List.of(), totalPortfolioValueBefore);
+        Objects.requireNonNull(totalPortfolioValueBefore, "Total portfolio value before cannot be null");
+        return new RebalancePlan(
+                List.of(),
+                List.of(),
+                List.of(),
+                BigDecimal.ZERO.setScale(2, RoundingMode.HALF_EVEN),
+                BigDecimal.ZERO.setScale(2, RoundingMode.HALF_EVEN),
+                totalPortfolioValueBefore
+        );
+    }
+
+    private static List<RebalanceOrder> filterOrdersByAction(List<RebalanceOrder> orders, OrderAction action) {
+        List<RebalanceOrder> filtered = new ArrayList<>();
+        for (RebalanceOrder order : orders) {
+            if (order != null && order.action() == action) {
+                filtered.add(order);
+            }
+        }
+        return filtered;
+    }
+
+    private static BigDecimal sumOrderAmounts(List<RebalanceOrder> orders, OrderAction action) {
+        BigDecimal sum = BigDecimal.ZERO;
+        for (RebalanceOrder order : orders) {
+            if (order != null && order.action() == action) {
+                sum = sum.add(order.estimatedAmount());
+            }
+        }
+        return sum.setScale(2, RoundingMode.HALF_EVEN);
     }
 
     /**
-     * Returns an unmodifiable list containing exclusively the SELL orders in this plan.
+     * Returns the pre-filtered, unmodifiable list containing exclusively the SELL orders in this plan.
      *
-     * @return unmodifiable list of SELL {@link RebalanceOrder} instances
+     * @return unmodifiable list of SELL {@link RebalanceOrder} instances (O(1) access)
      */
     public List<RebalanceOrder> getSellOrders() {
-        return orders.stream()
-                .filter(RebalanceOrder::isSell)
-                .toList();
+        return sellOrders;
     }
 
     /**
-     * Returns an unmodifiable list containing exclusively the BUY orders in this plan.
+     * Returns the pre-filtered, unmodifiable list containing exclusively the BUY orders in this plan.
      *
-     * @return unmodifiable list of BUY {@link RebalanceOrder} instances
+     * @return unmodifiable list of BUY {@link RebalanceOrder} instances (O(1) access)
      */
     public List<RebalanceOrder> getBuyOrders() {
-        return orders.stream()
-                .filter(RebalanceOrder::isBuy)
-                .toList();
+        return buyOrders;
+    }
+
+    /**
+     * Returns the precomputed sum of estimated proceeds across all SELL orders.
+     *
+     * @return total estimated proceeds from SELL orders (O(1) access)
+     */
+    public BigDecimal getTotalSellAmount() {
+        return totalSellAmount;
+    }
+
+    /**
+     * Returns the precomputed sum of estimated capital required across all BUY orders.
+     *
+     * @return total estimated capital for BUY orders (O(1) access)
+     */
+    public BigDecimal getTotalBuyAmount() {
+        return totalBuyAmount;
     }
 
     /**
@@ -96,36 +172,10 @@ public record RebalancePlan(
     /**
      * Returns the total count of trade orders in this plan.
      *
-     * @return total order count
+     * @return total order count (O(1) access)
      */
     public int getOrderCount() {
         return orders.size();
-    }
-
-    /**
-     * Calculates the sum of estimated amounts across all SELL orders in this plan.
-     *
-     * @return total estimated proceeds from SELL orders, rounded to 2 decimal places
-     */
-    public BigDecimal getTotalSellAmount() {
-        return orders.stream()
-                .filter(RebalanceOrder::isSell)
-                .map(RebalanceOrder::estimatedAmount)
-                .reduce(BigDecimal.ZERO, BigDecimal::add)
-                .setScale(2, RoundingMode.HALF_EVEN);
-    }
-
-    /**
-     * Calculates the sum of estimated amounts across all BUY orders in this plan.
-     *
-     * @return total estimated capital required for BUY orders, rounded to 2 decimal places
-     */
-    public BigDecimal getTotalBuyAmount() {
-        return orders.stream()
-                .filter(RebalanceOrder::isBuy)
-                .map(RebalanceOrder::estimatedAmount)
-                .reduce(BigDecimal.ZERO, BigDecimal::add)
-                .setScale(2, RoundingMode.HALF_EVEN);
     }
 
     /**
@@ -134,7 +184,7 @@ public record RebalancePlan(
      * @return immutable list of orders
      */
     public List<RebalanceOrder> getOrders() {
-        return orders();
+        return orders;
     }
 
     /**
@@ -143,7 +193,7 @@ public record RebalancePlan(
      * @return total portfolio value before
      */
     public BigDecimal getTotalPortfolioValueBefore() {
-        return totalPortfolioValueBefore();
+        return totalPortfolioValueBefore;
     }
 
     @Override
@@ -156,8 +206,8 @@ public record RebalancePlan(
         return String.format(Locale.US,
                 "RebalancePlan[orders=%d, totalSell=$%s, totalBuy=$%s, totalPortfolioValueBefore=$%s]",
                 orders.size(),
-                getTotalSellAmount().toPlainString(),
-                getTotalBuyAmount().toPlainString(),
+                totalSellAmount.toPlainString(),
+                totalBuyAmount.toPlainString(),
                 totalPortfolioValueBefore.setScale(2, RoundingMode.HALF_EVEN).toPlainString());
     }
 }

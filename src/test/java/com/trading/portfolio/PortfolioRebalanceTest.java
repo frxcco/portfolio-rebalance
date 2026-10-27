@@ -554,5 +554,30 @@ class PortfolioRebalanceTest {
             assertThat(pos.shares()).isEqualByComparingTo(new BigDecimal("8"));
             assertThat(pos.getMarketValue()).isEqualByComparingTo(new BigDecimal("800.00"));
         }
+
+        @Test
+        @DisplayName("RebalancePlan precomputed record components are consistent and immutable")
+        void rebalancePlanPrecomputedComponentsAreConsistentAndImmutable() {
+            portfolio.addPosition(meta, 10);
+            portfolio.addPosition(aapl, 10);
+            portfolio.setAllocations(
+                    new Allocation(meta, 0.40),
+                    new Allocation(aapl, 0.60)
+            );
+
+            RebalancePlan plan = portfolio.rebalance();
+
+            // Direct record components match getters (O(1) access)
+            assertThat(plan.sellOrders()).isEqualTo(plan.getSellOrders()).hasSize(1);
+            assertThat(plan.buyOrders()).isEqualTo(plan.getBuyOrders()).hasSize(1);
+            assertThat(plan.totalSellAmount()).isEqualByComparingTo(plan.getTotalSellAmount());
+            assertThat(plan.totalBuyAmount()).isEqualByComparingTo(plan.getTotalBuyAmount());
+
+            // Immutability: attempting to mutate precomputed lists throws UnsupportedOperationException
+            assertThatThrownBy(() -> plan.sellOrders().add(plan.buyOrders().get(0)))
+                    .isInstanceOf(UnsupportedOperationException.class);
+            assertThatThrownBy(() -> plan.buyOrders().add(plan.sellOrders().get(0)))
+                    .isInstanceOf(UnsupportedOperationException.class);
+        }
     }
 }

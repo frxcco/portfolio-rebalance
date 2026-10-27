@@ -1,7 +1,7 @@
 # Portfolio Management & Rebalancing Engine
 
 [![Java](https://img.shields.io/badge/Java-17%2B-ED8B00?style=flat&logo=openjdk&logoColor=white)](https://openjdk.org/)
-[![Build & Test](https://img.shields.io/badge/Tests-13%20Passed-brightgreen?style=flat&logo=junit5&logoColor=white)](https://junit.org/junit5/)
+[![Build & Test](https://img.shields.io/badge/Tests-14%20Passed-brightgreen?style=flat&logo=junit5&logoColor=white)](https://junit.org/junit5/)
 [![Architecture](https://img.shields.io/badge/Architecture-Domain--Driven%20Design-blue?style=flat)](https://martinfowler.com/tags/domain%20driven%20design.html)
 [![Precision](https://img.shields.io/badge/Arithmetic-Strict%20BigDecimal-informational)](https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/math/BigDecimal.html)
 
@@ -223,7 +223,7 @@ Modern Java records are used for domain value objects:
 - [`Allocation`](file:///c:/Users/panch/OneDrive/Documentos/Gemini/portfolio-rebalance/src/main/java/com/trading/portfolio/model/Allocation.java): Immutable target weight specification with range assertion $[0.0, 1.0]$.
 - [`PortfolioPosition`](file:///c:/Users/panch/OneDrive/Documentos/Gemini/portfolio-rebalance/src/main/java/com/trading/portfolio/model/PortfolioPosition.java): Immutable asset holding; share adjustments return a new record instance (`addShares`).
 - [`RebalanceOrder`](file:///c:/Users/panch/OneDrive/Documentos/Gemini/portfolio-rebalance/src/main/java/com/trading/portfolio/model/RebalanceOrder.java): Immutable trade order record with validation on strictly positive quantities.
-- [`RebalancePlan`](file:///c:/Users/panch/OneDrive/Documentos/Gemini/portfolio-rebalance/src/main/java/com/trading/portfolio/model/RebalancePlan.java): Immutable execution batch with convenience filtering methods (`getSellOrders()`, `getBuyOrders()`).
+- [`RebalancePlan`](file:///c:/Users/panch/OneDrive/Documentos/Gemini/portfolio-rebalance/src/main/java/com/trading/portfolio/model/RebalancePlan.java): Immutable execution batch precomputing segregated pipelines (`sellOrders`, `buyOrders`, `totalSellAmount`, `totalBuyAmount`) during instantiation for $O(1)$ query access and seamless JSON serialization.
 
 ---
 
@@ -246,6 +246,7 @@ Every requirement from the initial design specification and edge-case boundary a
 | **Edge-02** | **Drift within Noise Threshold** | Minor market drift ($0.25) within configured threshold ($1.00). | Suppresses small noise trades to avoid fee erosion. | Passed |
 | **Edge-03** | **Rebalance Without Target Allocations** | Calling rebalance before defining allocations. | Fails fast with `IllegalStateException`. | Passed |
 | **Edge-04** | **Position Accumulation** | Adding shares for an existing ticker (case-insensitive "meta" / "META"). | Accumulates shares into a single consolidated position. | Passed |
+| **Edge-05** | **Precomputed Record Invariants** | Direct record component verification (`sellOrders`, `buyOrders`, totals). | Asserts $O(1)$ precomputed collections match getters and enforce strict immutability. | Passed |
 
 ---
 
@@ -272,7 +273,7 @@ This repository is completely self-contained. It includes the **Maven Wrapper (`
 [INFO] -------------------------------------------------------
 [INFO] Running com.trading.portfolio.PortfolioRebalanceTest
 [INFO] Running com.trading.portfolio.PortfolioRebalanceTest$EdgeCasesTest
-[INFO] Tests run: 13, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 14, Failures: 0, Errors: 0, Skipped: 0
 [INFO] ------------------------------------------------------------------------
 [INFO] BUILD SUCCESS
 [INFO] ------------------------------------------------------------------------
